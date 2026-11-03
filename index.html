@@ -1400,7 +1400,7 @@ table.list td,.alog td{border-bottom:1px solid var(--line)}
   function busyPointer() { return pdown && Date.now() - pdownAt < 1200; }
   function scheduleRender() {
     if (rq) return; rq = true;
-    (window.requestAnimationFrame || setTimeout)(function () {
+    (document.hidden ? setTimeout : (window.requestAnimationFrame || setTimeout))(function () {
       rq = false;
       if (busyPointer()) {
         if (!pendAll) { pendAll = true; setTimeout(function () { if (pendAll) { pendAll = false; pdown = false; updateAll(); } }, 1300); }
@@ -3476,9 +3476,9 @@ table.list td,.alog td{border-bottom:1px solid var(--line)}
   ACT['sem-del'] = function () {
     var m = S.modal; if (!m || m.type !== 'sem') return;
     if ((bookedMap()[m.sem.date + '|' + m.sem.time] || []).length) { toast('신청자가 있는 세미나는 지울 수 없습니다'); return; }
-    if (!window.confirm(md(m.sem.date) + ' ' + m.sem.time + ' 세미나를 지울까요?')) return;
-    S.settings.seminars = (S.settings.seminars || []).filter(function (x) { return x.id !== m.sem.id; });
-    closeModal(); saveSettings('세미나를 지웠습니다');
+    var sid = m.sem.id;
+    openModal({ type: 'confirm', title: '세미나 삭제', body: '<b>' + md(m.sem.date) + ' ' + esc(m.sem.time) + ' ' + esc(m.sem.title || '세미나') + '</b>를 지울까요?', yes: '지우기', danger: true,
+      onYes: function () { S.settings.seminars = (S.settings.seminars || []).filter(function (x) { return x.id !== sid; }); saveSettings('세미나를 지웠습니다'); } });
   };
   ACT['sem-add-cust'] = function () {
     var m = S.modal; if (!m || m.type !== 'sem') return;

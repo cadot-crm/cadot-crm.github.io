@@ -2154,11 +2154,13 @@ table.list td,.alog td{border-bottom:1px solid var(--line)}
     }).join('') : '<div class="tl-item"><span></span><span class="muted">아직 기록이 없습니다</span><span></span></div>') + '</div></div>';
     var del = writable() ? '<button class="btn danger sm" data-act="del-open" data-id="' + id + '" style="align-self:flex-start">고객 삭제</button>' : '';
     $('#drawer').innerHTML = head + '<div class="dr-body">' + next + quick + basic + rsv + visit + order + close + tlHtml + del + '</div>';
+    smsSync(id);
   }
   function timeline(c) {
     var ev = [];
     (c.calls || []).forEach(function (k, i) { ev.push({ at: k.at, kind: '통화', html: esc(k.res) + (k.note ? ' — ' + esc(k.note) : ''), by: k.by, del: ['calls', i] }); });
-    (c.sms || []).forEach(function (s, i) { var t = SMS[s.code]; ev.push({ at: s.at, kind: '문자', html: '<span class="code-b' + (t && t.kind === '광고성' ? ' ad' : '') + '">' + esc(s.code) + '</span> ' + esc(t ? t.name : ''), by: s.by, del: ['sms', i] }); });
+    (c.sms || []).forEach(function (s, i) { var t = SMS[s.code]; ev.push({ at: s.at, kind: '문자', html: '<span class="code-b' + (t && t.kind === '광고성' ? ' ad' : '') + '">' + esc(s.code) + '</span> ' + esc(t ? t.name : '') +
+      (s.via === '알리고' ? ' <span class="chip ' + (s.st === '성공' ? 'ok' : s.st === '실패' ? 'late' : 'plan') + '" title="' + esc(s.stRaw || '') + '">' + (s.st === '성공' ? '전송 성공' : s.st === '실패' ? '전송 실패' + (s.stReason ? ' · ' + esc(s.stReason) : '') : '전송 확인 중') + '</span>' : ' <span class="muted small">(기록만)</span>'), by: s.by, del: ['sms', i] }); });
     (c.log || []).forEach(function (g, i) { ev.push({ at: g.at, kind: g.t || '변경', html: esc(g.text), by: g.by, del: ['log', i] }); });
     if (c.inAt) ev.push({ at: c.inAt, kind: '접수', html: esc(c.src || ''), by: '' });
     return ev.sort(function (a, b) { return a.at < b.at ? 1 : -1; });
@@ -3370,9 +3372,29 @@ table.list td,.alog td{border-bottom:1px solid var(--line)}
         toast('발송 실패 — ' + ((r.error && r.error.message) || d.message || '알 수 없는 오류')); return;
       }
       closeModal();
-      edit(c.id, function (x) { (x.sms = x.sms || []).push({ at: now(), code: code, by: opName(), via: '알리고', msgId: String(d.msg_id || '') }); }, code + ' 문자를 보냈습니다(' + (d.msg_type || '') + ')');
+      edit(c.id, function (x) { (x.sms = x.sms || []).push({ at: now(), code: code, by: opName(), via: '알리고', msgId: String(d.msg_id || ''), st: '대기' }); }, code + ' 문자를 보냈습니다(' + (d.msg_type || '') + ')');
+      setTimeout(function () { smsSync(c.id, true); }, 20000);
     }, function () { delete el.dataset.busy; delete el.dataset.armed; el.disabled = false; el.textContent = '문자 보내기'; toast('발송 실패 — 인터넷 연결 확인'); });
   };
+  // 알리고 전송 결과 가져오기 — 고객 카드를 열 때(30초에 한 번), 보낸 뒤 20초에 한 번
+  function smsSync(id, force) {
+    if (S.mode !== 'shared' || !window.UND_SB) return;
+    var c = C()[id]; if (!c) return;
+    var chk = S.smsChk || (S.smsChk = {});
+    (c.sms || []).forEach(function (s) {
+      if (s.via !== '알리고' || !s.msgId || s.st === '성공' || s.st === '실패') return;
+      if (Date.now() - new Date(s.at).getTime() > 3 * 864e5) return;
+      if (!force && Date.now() - (chk[s.msgId] || 0) < 30000) return;
+      chk[s.msgId] = Date.now();
+      var mid = s.msgId;
+      window.UND_SB.rpc('cadot_sms_status', { p_mid: mid }).then(function (r) {
+        var it = ((r.data || {}).list || [])[0]; if (!it) return;
+        var raw = String(it.sms_state || ''), st = /실패|오류|에러|불가/.test(raw) ? '실패' : /완료|성공/.test(raw) ? '성공' : '대기';
+        if (st === s.st) return;
+        edit(id, function (x) { (x.sms || []).forEach(function (k) { if (k.msgId === mid) { k.st = st; k.stRaw = raw; k.stReason = it.reason || ''; } }); }, '', true);
+      });
+    });
+  }
   ACT['sms-copy'] = function (el) { var c = S.smsCid ? C()[S.smsCid] : null, t = SMS[el.dataset.code]; if (t) copyText(fillSms(t.body, smsVars(c, { req: S.reqDate })), el.dataset.code + ' 문자를 복사했습니다'); };
   ACT['sms-stage'] = function (el) { S.smsStage = el.dataset.v; VIEW.sms.mount(); };
   ACT['rsv-open'] = function (el) { if (!writable()) { toast('보기 전용입니다'); return; } openRsv(el.dataset.id, el.dataset.move === '1'); };

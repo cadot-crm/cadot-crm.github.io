@@ -582,6 +582,11 @@ table.list thead tr,.alog thead tr{border-top:2px solid var(--ink)}
 table.list td,.alog td{border-bottom:1px solid var(--line)}
 .num{font-family:var(--num)}
 
+.smscard>header[data-act]{cursor:pointer}.smscard>header .sentn{margin-left:auto;font-size:12px;color:var(--mute);white-space:nowrap}
+.smscard.is-open{box-shadow:0 0 0 2px var(--accent)}
+.recent{border-top:1px solid var(--line);margin-top:8px;padding-top:8px}.rrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:3px 0}
+.smsline{display:flex;flex-wrap:wrap;gap:6px}.sl{display:inline-flex;gap:3px;align-items:center}
+
 .sched{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0}
 .btbl{width:100%;border-collapse:collapse;margin-top:8px}.btbl th,.btbl td{padding:7px 6px;border-bottom:1px solid var(--line);text-align:left;font-size:13px;vertical-align:middle}.btbl th{font-size:12px;color:var(--mute);font-weight:600}
 .smsprev{white-space:pre-wrap;background:var(--sunk);border-radius:12px;padding:10px 12px;font-size:13px;line-height:1.55;margin-top:6px;max-width:360px}
@@ -1985,16 +1990,17 @@ table.list td,.alog td{border-bottom:1px solid var(--line)}
     update: function () {
       if (!$('#sms-list')) return this.mount();
       var c = S.smsCid ? C()[S.smsCid] : null, d = c ? D[c.id] : null, ed = edOn();
-      var vars = smsVars(c, { req: S.reqDate });
+      var vars = smsVars(c, { req: S.reqDate }), SENT = smsIndex();
       var cards = CT.sms.filter(function (s) { return S.smsStage === 'all' || s.stage === S.smsStage; }).map(function (s) {
         var text = fillSms(s.body, vars), holes = (text.match(/\{[^}]+\}/g) || []).length, ad = s.kind === '광고성';
         var now_ = d && d.action && d.action.indexOf(s.code) >= 0;
         var blocked = ad && c && c.mkt !== 'Y', custom = !SMS0[s.code];
-        return '<article class="smscard' + (now_ ? ' is-now' : '') + '"><header><span class="code-b' + (ad ? ' ad' : '') + '">' + esc(s.code) + '</span><b>' + esc(s.name) + '</b>' +
-          (custom ? '<span class="chip plan">추가한 문자</span>' : smsChanged(s) ? '<span class="chip plan">편집함</span>' : '') + (now_ ? '<span class="chip today">지금 보낼 문자</span>' : '') + '</header>' +
+        var sent = SENT[s.code] || [];
+        return '<article class="smscard' + (now_ ? ' is-now' : '') + (S.smsOpen === s.code ? ' is-open' : '') + '"><header data-act="sms-recent" data-code="' + esc(s.code) + '" title="누르면 최근 보낸 목록"><span class="code-b' + (ad ? ' ad' : '') + '">' + esc(s.code) + '</span><b>' + esc(s.name) + '</b>' +
+          (custom ? '<span class="chip plan">추가한 문자</span>' : smsChanged(s) ? '<span class="chip plan">편집함</span>' : '') + (now_ ? '<span class="chip today">지금 보낼 문자</span>' : '') + '<span class="sentn">' + (sent.length ? sent.length + '건 보냄 ' : '') + (S.smsOpen === s.code ? '▴' : '▾') + '</span></header>' +
           '<div class="when"><b>보내는 때</b> ' + esc(s.when) + '<br><span class="' + (ad ? 'warn-t' : 'muted') + '">' + esc(s.kind + ' · ' + s.channel + (s.cond && s.cond !== '—' ? ' · ' + s.cond : '')) + '</span></div>' +
-          '<div class="body">' + markHoles(text) + '</div><footer><span class="by num">' + bytesLabel(text) + (holes ? ' · <span class="warn-t">빈 칸 ' + holes + '</span>' : '') + (blocked ? ' · <span class="warn-t">광고 동의 없음</span>' : '') + '</span>' +
-          (ed ? '<button class="btn sm" data-act="sms-ed" data-code="' + esc(s.code) + '">수정</button>' + (custom ? '<button class="btn sm del" data-act="sms-del" data-code="' + esc(s.code) + '">삭제</button>' : '') : '') +
+          '<div class="body">' + markHoles(text) + '</div>' + recentHtml(s.code, sent) + '<footer><span class="by num">' + bytesLabel(text) + (holes ? ' · <span class="warn-t">빈 칸 ' + holes + '</span>' : '') + (blocked ? ' · <span class="warn-t">광고 동의 없음</span>' : '') + '</span>' +
+          (canEditContent() ? '<button class="btn sm" data-act="sms-ed" data-code="' + esc(s.code) + '">수정</button>' : '') + (ed && custom ? '<button class="btn sm del" data-act="sms-del" data-code="' + esc(s.code) + '">삭제</button>' : '') +
           '<button class="btn sm" data-act="sms-copy" data-code="' + esc(s.code) + '">복사</button>' + (c ? '<button class="btn sm primary" data-act="sms-open" data-id="' + esc(c.id) + '" data-code="' + esc(s.code) + '">열어서 기록</button>' : '') + '</footer></article>';
       }).join('');
       $('#sms-list').innerHTML = '<div class="smsgrid">' + (cards || '<p class="muted">이 단계 문자가 없습니다</p>') + '</div>';
@@ -3460,9 +3466,11 @@ table.list td,.alog td{border-bottom:1px solid var(--line)}
       };
       var td = L_.filter(function (g) { return String(g.at).slice(0, 10) === t; });
       var kp = function (k, v, cls) { return '<div class="slk"><span>' + k + '</span><b class="num' + (cls ? ' ' + cls : '') + '">' + v + '</b></div>'; };
-      box.innerHTML = '<div class="panel"><header><h2>발송 내역</h2><span class="muted small">최근 60건</span><button class="btn sm" data-act="sms-log" style="margin-left:auto">새로고침</button></header><div class="pad">' +
+      var mode = S.slogMode || 'cust';
+      box.innerHTML = '<div class="panel"><header><h2>발송 내역</h2><div class="seg" role="group" style="margin-left:8px">' + [['cust', '고객별'], ['time', '시간순']].map(function (x) { return '<button type="button" data-act="slog-mode" data-v="' + x[0] + '" aria-pressed="' + (mode === x[0]) + '">' + x[1] + '</button>'; }).join('') +
+        '</div><button class="btn sm" data-act="sms-log" style="margin-left:auto">새로고침</button></header><div class="pad">' +
         '<div class="slks">' + kp('오늘 보냄', td.length) + kp('접수 성공', td.filter(function (g) { return g.ok; }).length, 'good-t') + kp('실패', td.filter(function (g) { return !g.ok; }).length, 'warn-t') + kp('예약 대기', L_.filter(function (g) { return g.ok && g.rat && g.rat > now() && stOf(g)[1].indexOf('예약 ') === 0; }).length) + '</div>' +
-        (L_.length ? '<table class="btbl"><tr><th>보낸 때</th><th>고객</th><th>문자</th><th>종류</th><th>보낸 사람</th><th>결과</th></tr>' + L_.map(function (g) {
+        (mode === 'cust' ? custSmsTable() : L_.length ? '<table class="btbl"><tr><th>보낸 때</th><th>고객</th><th>문자</th><th>종류</th><th>보낸 사람</th><th>결과</th></tr>' + L_.map(function (g) {
           var c = C()[g.cid], s = stOf(g);
           return '<tr><td class="num small">' + esc(mdt(String(g.at).slice(0, 16))) + '</td><td>' + (c ? '<button class="linkbtn" data-act="open" data-id="' + esc(c.id) + '">' + esc(c.name) + '</button>' : '<span class="muted">' + (g.cid ? '삭제된 고객' : '테스트') + '</span>') + '</td>' +
             '<td>' + esc(g.code || '') + '</td><td class="small">' + esc(g.type || '') + '</td><td class="small">' + esc(String(g.by || '').replace(/@.*$/, '')) + '</td><td><span class="chip ' + s[0] + '">' + esc(s[1]) + '</span></td></tr>';
@@ -3470,6 +3478,38 @@ table.list td,.alog td{border-bottom:1px solid var(--line)}
     });
   }
   ACT['sms-log'] = loadSmsLog;
+  ACT['slog-mode'] = function (el) { S.slogMode = el.dataset.v; loadSmsLog(); };
+  // 문자 기록 한 줄 상태
+  function smsStTag(k) {
+    if (k.via !== '알리고') return '<span class="chip plan">기록만</span>';
+    var st = k.st;
+    return st === '성공' ? '<span class="chip ok">성공</span>' : st === '실패' ? '<span class="chip late">실패' + (k.stReason ? ' · ' + esc(k.stReason) : '') + '</span>' :
+      st === '취소' ? '<span class="chip plan">예약 취소</span>' : st === '예약' ? '<span class="chip plan">예약 ' + esc(mdt(k.rat)) + '</span>' : '<span class="chip plan">확인 중</span>';
+  }
+  // 문구별 보낸 목록 { code: [{c, k}] } — 최근 순
+  function smsIndex() {
+    var m = {};
+    Object.keys(C()).forEach(function (id) { var c = C()[id]; (c.sms || []).forEach(function (k) { if (k && k.code) (m[k.code] = m[k.code] || []).push({ c: c, k: k }); }); });
+    Object.keys(m).forEach(function (code) { m[code].sort(function (a, b) { return a.k.at < b.k.at ? 1 : -1; }); });
+    return m;
+  }
+  ACT['sms-recent'] = function (el) { S.smsOpen = S.smsOpen === el.dataset.code ? '' : el.dataset.code; VIEW.sms.update(); };
+  function recentHtml(code, list) {
+    if (S.smsOpen !== code) return '';
+    return '<div class="recent"><div class="small muted" style="margin-bottom:4px">최근 보낸 ' + list.length + '건' + (list.length > 15 ? ' 중 15건' : '') + '</div>' + (list.length ? list.slice(0, 15).map(function (x) {
+      return '<div class="rrow"><button class="linkbtn" data-act="open" data-id="' + esc(x.c.id) + '">' + esc(x.c.name) + '</button><span class="num small muted">' + esc(mdt(x.k.at)) + '</span>' + smsStTag(x.k) + '<span class="small muted">' + esc(x.k.by || '') + '</span></div>';
+    }).join('') : '<div class="small muted">아직 보낸 적이 없습니다</div>') + '</div>';
+  }
+  // 발송 내역 — 고객별
+  function custSmsTable() {
+    var rows = Object.keys(C()).map(function (id) { var c = C()[id], L = (c.sms || []).filter(function (k) { return k && k.at; }).sort(function (a, b) { return a.at < b.at ? 1 : -1; }); return { c: c, L: L }; })
+      .filter(function (x) { return x.L.length; }).sort(function (a, b) { return a.L[0].at < b.L[0].at ? 1 : -1; }).slice(0, 80);
+    if (!rows.length) return '<div class="empty-state small">아직 보낸 문자가 없습니다</div>';
+    return '<table class="btbl"><tr><th>고객</th><th>보낸 수</th><th>마지막</th><th>보낸 문자 (최근 순)</th></tr>' + rows.map(function (x) {
+      return '<tr><td><button class="linkbtn" data-act="open" data-id="' + esc(x.c.id) + '">' + esc(x.c.name) + '</button><div class="muted small num">' + phoneDisp(x.c.phone) + '</div></td><td class="num">' + x.L.length + '</td><td class="num small">' + esc(mdt(x.L[0].at)) + '</td>' +
+        '<td><div class="smsline">' + x.L.slice(0, 8).map(function (k) { var t = SMS[k.code]; return '<span class="sl" title="' + esc((t ? t.name : '') + ' · ' + mdt(k.at)) + '"><span class="code-b">' + esc(k.code) + '</span>' + smsStTag(k) + '</span>'; }).join('') + (x.L.length > 8 ? '<span class="muted small">+' + (x.L.length - 8) + '</span>' : '') + '</div></td></tr>';
+    }).join('') + '</table>';
+  }
   ACT['m-aligo'] = function (el) {
     var m = S.modal; if (!m || m.type !== 'sms' || el.dataset.busy) return;
     var c = C()[m.id], txt = $('#m-text').value, t = SMS[m.code] || {}, hr = new Date().getHours();

@@ -586,6 +586,7 @@ table.list td,.alog td{border-bottom:1px solid var(--line)}
 .smscard.is-open{box-shadow:0 0 0 2px var(--accent)}
 .recent{border-top:1px solid var(--line);margin-top:8px;padding-top:8px}.rrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:3px 0}
 .smsline{display:flex;flex-wrap:wrap;gap:6px}.sl{display:inline-flex;gap:3px;align-items:center}
+.pk-list{display:flex;flex-direction:column;gap:4px;margin-top:10px;max-height:min(420px,55vh);overflow:auto}
 
 .sched{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0}
 .btbl{width:100%;border-collapse:collapse;margin-top:8px}.btbl th,.btbl td{padding:7px 6px;border-bottom:1px solid var(--line);text-align:left;font-size:13px;vertical-align:middle}.btbl th{font-size:12px;color:var(--mute);font-weight:600}
@@ -2001,7 +2002,7 @@ table.list td,.alog td{border-bottom:1px solid var(--line)}
           '<div class="when"><b>보내는 때</b> ' + esc(s.when) + '<br><span class="' + (ad ? 'warn-t' : 'muted') + '">' + esc(s.kind + ' · ' + s.channel + (s.cond && s.cond !== '—' ? ' · ' + s.cond : '')) + '</span></div>' +
           '<div class="body">' + markHoles(text) + '</div>' + recentHtml(s.code, sent) + '<footer><span class="by num">' + bytesLabel(text) + (holes ? ' · <span class="warn-t">빈 칸 ' + holes + '</span>' : '') + (blocked ? ' · <span class="warn-t">광고 동의 없음</span>' : '') + '</span>' +
           (canEditContent() ? '<button class="btn sm" data-act="sms-ed" data-code="' + esc(s.code) + '">수정</button>' : '') + (ed && custom ? '<button class="btn sm del" data-act="sms-del" data-code="' + esc(s.code) + '">삭제</button>' : '') +
-          '<button class="btn sm" data-act="sms-copy" data-code="' + esc(s.code) + '">복사</button>' + (c ? '<button class="btn sm primary" data-act="sms-open" data-id="' + esc(c.id) + '" data-code="' + esc(s.code) + '">열어서 기록</button>' : '') + '</footer></article>';
+          '<button class="btn sm" data-act="sms-copy" data-code="' + esc(s.code) + '">복사</button>' + '<button class="btn sm primary" data-act="sms-pick" data-code="' + esc(s.code) + '">' + (c ? esc(c.name) + '님께 보내기' : '보내기') + '</button>' + '</footer></article>';
       }).join('');
       $('#sms-list').innerHTML = '<div class="smsgrid">' + (cards || '<p class="muted">이 단계 문자가 없습니다</p>') + '</div>';
     }
@@ -3493,6 +3494,30 @@ table.list td,.alog td{border-bottom:1px solid var(--line)}
     Object.keys(m).forEach(function (code) { m[code].sort(function (a, b) { return a.k.at < b.k.at ? 1 : -1; }); });
     return m;
   }
+  // 문자 탭 카드 「보내기」 — 위에서 고른 고객이 있으면 바로, 없으면 고객 찾기 창
+  ACT['sms-pick'] = function (el) {
+    var code = el.dataset.code;
+    if (S.smsCid && C()[S.smsCid]) { openComposer(S.smsCid, code); return; }
+    openModal({ type: 'pick', code: code, q: '', title: '받을 고객 고르기' });
+    setTimeout(function () { var i = $('#pk-q'); if (i) i.focus(); }, 0);
+  };
+  function pickList(m) {
+    var q = String(m.q || '').trim().toLowerCase(), qd = q.replace(/[^0-9]/g, '');
+    var L_ = list().filter(function (x) { if (!q) return !x.c.close; return String(x.c.name || '').toLowerCase().indexOf(q) >= 0 || (qd.length >= 3 && String(x.c.phone || '').replace(/[^0-9]/g, '').indexOf(qd) >= 0); })
+      .sort(function (a, b) { return String(a.c.inAt) < String(b.c.inAt) ? 1 : -1; }).slice(0, 30);
+    return L_.length ? L_.map(function (x) {
+      var last = (x.c.sms || []).slice(-1)[0];
+      return '<button type="button" class="visit-row" data-act="pk-go" data-id="' + esc(x.c.id) + '"><span><b>' + esc(x.c.name) + '</b> <span class="muted small num">' + phoneDisp(x.c.phone) + '</span></span>' +
+        '<span class="muted small">' + esc(x.d.label || '') + (last ? ' · 마지막 문자 ' + esc(last.code) + ' ' + esc(mdt(last.at)) : '') + '</span></button>';
+    }).join('') : '<div class="empty-state small">찾는 고객이 없습니다</div>';
+  }
+  MODAL.pick = function (m) {
+    var t = SMS[m.code] || {};
+    return mh('받을 고객 고르기', esc(m.code + ' ' + (t.name || ''))) + '<div class="mb"><input class="inp" id="pk-q" placeholder="이름 또는 번호로 찾기" value="' + esc(m.q) + '" autocomplete="off">' +
+      '<div id="pk-list" class="pk-list">' + pickList(m) + '</div></div><footer><button class="btn" data-act="modal-close">닫기</button></footer>';
+  };
+  document.addEventListener('input', function (ev) { if (ev.target.id === 'pk-q' && S.modal && S.modal.type === 'pick') { S.modal.q = ev.target.value; $('#pk-list').innerHTML = pickList(S.modal); } });
+  ACT['pk-go'] = function (el) { var m = S.modal; if (!m || m.type !== 'pick') return; var code = m.code; closeModal(); openComposer(el.dataset.id, code); };
   ACT['sms-recent'] = function (el) { S.smsOpen = S.smsOpen === el.dataset.code ? '' : el.dataset.code; VIEW.sms.update(); };
   function recentHtml(code, list) {
     if (S.smsOpen !== code) return '';

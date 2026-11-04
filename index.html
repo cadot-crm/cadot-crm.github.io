@@ -1987,7 +1987,7 @@ table.list td,.alog td{border-bottom:1px solid var(--line)}
         sel('sms-post', [['', '추천 글(D4 · G1)']].concat(posts), S.post, 'class="inp" id="sms-post" style="width:min(300px,100%)"') +
         '<label class="small" style="display:inline-flex;gap:6px;align-items:center">수신거부 요청일 <input class="inp" id="sms-req" type="date" value="' + esc(S.reqDate) + '" style="width:auto"></label></div>' +
         '<div class="toolbar"><div class="seg" role="group" aria-label="단계">' + stages.map(function (s) { return '<button type="button" data-act="sms-stage" data-v="' + s[0] + '" aria-pressed="' + (S.smsStage === s[0]) + '">' + esc(s[1]) + '</button>'; }).join('') + '</div>' +
-        edMark('sms') + (edOn() ? '<button type="button" class="btn sm primary" data-act="sms-new">+ 새 문자 추가</button>' + (isOver('sms') ? '<button type="button" class="linkbtn" data-act="ed-reset" data-key="sms">문자 전체를 기본으로</button>' : '') : '') + '</div>' +
+        edMark('sms') + (canEditContent() ? '<button type="button" class="btn sm primary" data-act="sms-new">+ 새 문자 추가</button>' : '') + (edOn() ? '' + (isOver('sms') ? '<button type="button" class="linkbtn" data-act="ed-reset" data-key="sms">문자 전체를 기본으로</button>' : '') : '') + '</div>' +
         '<div id="sms-list"></div><div style="margin-top:16px">' + refFold('smsRules', '문자 보내는 규칙', 2) + '</div>';
       this.update();
     },
@@ -2309,6 +2309,7 @@ table.list td,.alog td{border-bottom:1px solid var(--line)}
     flash(id);
     if (code === 8 && !(c.rsv && c.rsv.date)) setTimeout(function () { focusRsv(id); }, 120);
     if (code === 5) openModal({ type: 'recall', id: id, res: '콜백요청', only: true, recall: c.recall || '', title: '콜백 약속' });
+    else if (!(code === 8 && !(c.rsv && c.rsv.date))) setTimeout(function () { askSms(id, ST_SMS[code], L.statusText(code)); }, 150);
   }
   function focusRsv(id) {
     var el = $$('[data-inl="rsvDate"]').filter(function (e) { return e.dataset.id === id && e.offsetParent !== null; })[0];
@@ -2349,6 +2350,7 @@ table.list td,.alog td{border-bottom:1px solid var(--line)}
       }
     }, (mode === 'move' ? '예약 변경 → ' : mode === 'fix' ? '예약 고침 → ' : '예약 → ') + md(date) + (time ? ' ' + time : '') + (mode === 'move' ? ' · 다음은 C4 문자' : mode === 'new' && time ? ' · 다음은 C1 문자' : '') + (other ? ' · ' + other.c.name + ' 고객과 같은 시간' : ''), true);
     flash(id);
+    if (time && mode !== 'fix') setTimeout(function () { askSms(id, mode === 'move' ? 'C4' : 'C1', mode === 'move' ? '예약 변경 ' + md(date) + ' ' + time : '세미나 예약 ' + md(date) + ' ' + time); }, 150);
   }
   var inlT = null, inlEl = null;
   function inlineChange(t) {
@@ -3521,6 +3523,29 @@ table.list td,.alog td{border-bottom:1px solid var(--line)}
   };
   document.addEventListener('input', function (ev) { if (ev.target.id === 'pk-q' && S.modal && S.modal.type === 'pick') { S.modal.q = ev.target.value; $('#pk-list').innerHTML = pickList(S.modal); } });
   ACT['pk-go'] = function (el) { var m = S.modal; if (!m || m.type !== 'pick') return; var code = m.code; closeModal(); openComposer(el.dataset.id, code); };
+  // 진행상태 · 예약을 바꾸면 「문자를 보낼까요?」
+  var ST_SMS = { 2: 'B1', 3: 'B2', 4: 'B3', 6: 'F2', 7: 'F1', 8: 'C1', 9: 'C5', 10: 'C6', 11: 'D2', 12: 'D1', 13: 'E1' };
+  function askSms(id, code, label) {
+    if (S.noAskSms || S.modal) return;
+    var c = C()[id], d = D[id]; if (!c) return;
+    if (d && d.act && d.act.type === 'sms' && SMS[d.act.code]) code = d.act.code;   // 앱이 정한 다음 문자가 있으면 그것
+    if (!code || !SMS[code]) return;
+    openModal({ type: 'askSms', id: id, code: code, label: label, title: '문자를 보낼까요?' });
+  }
+  MODAL.askSms = function (m) {
+    var c = C()[m.id], t = SMS[m.code], txt = fillSms(t.body, smsVars(c, {})), ad = t.kind === '광고성', dup = recentSame(c, m.code);
+    return mh('문자를 보낼까요?', esc(c.name) + ' · <span class="num">' + phoneDisp(c.phone) + '</span>') + '<div class="mb">' +
+      '<p style="margin:0 0 8px">' + (m.label ? '<b>' + esc(String(m.label).replace(/^\d+\s*/, '')) + '</b>(으)로 바꿨습니다. ' : '') + '<span class="code-b' + (ad ? ' ad' : '') + '">' + esc(m.code) + '</span> <b>' + esc(t.name) + '</b> 문자를 보낼까요?</p>' +
+      (dup ? '<div class="banner warn">' + esc(m.code) + ' 문자를 ' + esc(mdt(dup.at)) + '에 이미 보냈습니다.</div>' : '') +
+      (ad && c.mkt !== 'Y' ? '<div class="banner warn">광고 수신 동의가 없는 고객입니다 — 광고성 문자는 보내지 않습니다.</div>' : '') +
+      '<div class="smsprev">' + markHoles(txt) + '</div>' +
+      '<label class="ck small" style="margin-top:10px"><input type="checkbox" id="ask-off"> 이번 접속 동안 묻지 않기</label></div>' +
+      '<footer><button class="btn" data-act="ask-no" style="margin-right:auto">안 보냄</button><button class="btn" data-act="ask-other">다른 문구</button><button class="btn primary" data-act="ask-yes">문자 열기</button></footer>';
+  };
+  var askOff = function () { var x = $('#ask-off'); if (x && x.checked) { S.noAskSms = true; toast('이번 접속 동안 묻지 않습니다 — 새로고침하면 다시 묻습니다'); } };
+  ACT['ask-no'] = function () { askOff(); closeModal(); };
+  ACT['ask-yes'] = function () { var m = S.modal; askOff(); closeModal(); openComposer(m.id, m.code); };
+  ACT['ask-other'] = function () { var m = S.modal; askOff(); closeModal(); openComposer(m.id, m.code); setTimeout(function () { var s = $('#m-code'); if (s) { s.focus(); try { s.showPicker && s.showPicker(); } catch (e) { } } }, 60); };
   ACT['sms-recent'] = function (el) { S.smsOpen = S.smsOpen === el.dataset.code ? '' : el.dataset.code; VIEW.sms.update(); };
   function recentHtml(code, list) {
     if (S.smsOpen !== code) return '';

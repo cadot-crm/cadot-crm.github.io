@@ -1680,7 +1680,7 @@ table.list td,.alog td{border-bottom:1px solid var(--line)}
   VIEW.customers = {
     mount: function () {
       var f = S.f, h = f.imp ? impEntry(f.imp) : null;
-      $('#view').innerHTML = (false ? '<div class="syncbar"><button type="button" class="btn primary" data-act="meta-sync">↻ 리스트 갱신하기</button><span class="muted small" id="sync-st">' + esc(S.syncMsg || 'Meta 새 리드를 바로 가져옵니다 · 매시간 자동으로도 가져옵니다') + '</span></div>' : '') +
+      $('#view').innerHTML = (realWritable() && S.mode === 'shared' && window.UND_SB ? '<div class="syncbar"><button type="button" class="btn primary" data-act="meta-sync">↻ 리스트 갱신하기</button><span class="muted small" id="sync-st">' + esc(S.syncMsg || 'Meta 새 리드를 바로 가져옵니다 · 매시간 자동으로도 가져옵니다') + '</span></div>' : '') +
         (realWritable() ? '<div class="impstrip">' + ICON.upload + '<span><b>Meta 잠재 고객 파일</b>을 끌어다 놓거나 고르세요 — CSV · 엑셀(xlsx · xls). 새 고객만 더하고, 이미 있는 고객은 건너뜁니다.</span><span class="btns">' +
         fileBtn('btn sm primary', '파일 고르기') + '<button class="btn sm" data-act="paste-open">붙여넣기</button></span></div>' : '') +
         '<div class="toolbar">' +
@@ -3669,8 +3669,8 @@ table.list td,.alog td{border-bottom:1px solid var(--line)}
     el.dataset.busy = '1'; el.disabled = true; el.textContent = '가져오는 중…';
     var st = function (m) { S.syncMsg = m; var x = $('#sync-st'); if (x) x.textContent = m; };
     var done = function () { delete el.dataset.busy; el.disabled = false; el.textContent = '↻ 리스트 갱신하기'; };
-    fetch('https://srkoimuotdbjglobyegx.supabase.co/functions/v1/und-meta-sync', { method: 'POST' })
-      .then(function (r) { return r.json(); })
+    window.UND_SB.rpc('cadot_meta_sync_now')
+      .then(function (x) { if (x.error) throw x.error; return x.data || {}; })
       .then(function (r) {
         var t = now().slice(11, 16);
         if (!r.ok) { st('갱신 실패 — ' + (r.msg || '잠시 뒤 다시')); toast('갱신 실패 — ' + (r.msg || '')); }
